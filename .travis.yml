@@ -1,0 +1,25 @@
+---
+language: cpp
+
+env:
+  global:
+    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+    #   via the "travis encrypt" command using the project repo's public key
+    - secure: "NgoQmWjVr7DDlwY2FStzqoz2r3wI+9tuoG9YHxfmhn40UT/RF8URAEPxrM/T7qUuj1LAPfbpPmKRz02UP3ppzDx9XrogUKCYH4a1DDzuuxrzIPgz9SXY8wm3xFL9luUTyQRFwn+q6yPmVFwOxdfw3yfrgdNr7cecrvBbG5SORMch9ddJuCDRcQLL2mCm1SytbBOE+jVYDz53RcP3YsmDFjWOXCVq74zENmqDugymm7cdyYVH9njKhZ4T2CfeYOwsK2BRq4P4g87tjSCNgJE80bdLp/ZtOQQAO95tw+gxPfT5l01xs4rmZkqJMsdY8t1uKZbWQ833Xtdb/4I+m4eJpgocpMewABRxoKPmrAyjautR/8sqNBFdyEBSPK9s8QT7D+C3cm+29GVxJoAAb31T4hOvNESyYpGsvUAUYcPWJXWySo+5QK+hSe+khbV56mgqqRPytO+G2WeRL+odCYjrAt+JVGAxJawuqJ6/Jh3mWxyhB3w/k6HUIHbUkQ+bh3X83bJi0cf6/blGxUuvFz5Eqg71B39pbudlkGHDzQLqNrDP/Xr90X6/L8rJ8gZqzHx4HoGY8JN6lEIjRD9mZs56utxeoAf9Ct9AwEHCO5jeLweE8xlqT5CQTtF0+SB9WKTTy9J5dysfDALJEtHnt6Ote1WJYjO5+1qgku2IPhST45A="
+
+before_install:
+  - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+install:
+  - sudo apt-get update -qq && sudo apt-get install -qy build-essential pkg-config curl libssl-dev libbz2-dev libsqlite3-dev libcurl4-openssl-dev liblzma-dev libdbd-sqlite3-perl
+
+script: ./bootstrap.sh && ./configure && make && make test
+
+addons:
+  coverity_scan:
+    project:
+      name: "zimbatm/nix"
+      description: "Build submitted via Travis CI"
+    notification_email: zimbatm@zimbatm.com
+    build_command_prepend: "./bootstrap.sh && ./configure && make clean"
+    build_command: "make -j 4"
+    branch_pattern: coverity_scan
