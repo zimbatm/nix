@@ -385,7 +385,7 @@ try_again:
 static string quoteRegexChars(const string & raw)
 {
     static auto specialRegex = std::regex(R"([.^$\\*+?()\[\]{}|])");
-    return std::regex_replace(raw, specialRegex, R"(\$&)");
+    return std::regex_replace(raw, specialRegex, std::string(R"(\$&)"));
 }
 
 static void readFileRoots(const char * path, StringSet & paths)
