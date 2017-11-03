@@ -14,3 +14,12 @@ jobs:
     steps:
       - checkout
       - run: nix-build release.nix -A coverage
+
+
+workflows:
+  version: 2
+  test_stuff:
+    jobs:
+      - bootstrap-test
+      - coverage
+
