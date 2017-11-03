@@ -8,9 +8,9 @@ jobs:
       - checkout
       - run: .circleci/bootstrap-test.sh
 
-  release:
+  coverage:
     docker:
       - image: nixos/nix
     steps:
       - checkout
-      - run: nix-build release.nix
+      - run: nix-build release.nix -A coverage
