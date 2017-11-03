@@ -1,0 +1,16 @@
+version: 2
+
+jobs:
+  bootstrap-test:
+    docker:
+      - image: ubuntu:17.10
+    steps:
+      - checkout
+      - run: .circleci/bootstrap-test.sh
+
+  release:
+    docker:
+      - image: nixos/nix
+    steps:
+      - checkout
+      - run: nix-build release.nix

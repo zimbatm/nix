@@ -1,0 +1,33 @@
+FROM ubuntu:17.10
+
+RUN apt-get update -qq && \
+  apt-get install -qy \
+    autoconf \
+    autoconf-archive \
+    bison \
+    brotli \
+    build-essential \
+    docbook5-xml \
+    flex \
+    git \
+    libbz2-dev \
+    libcurl4-openssl-dev \
+    liblzma-dev \
+    libseccomp-dev \
+    libsodium-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libxml2-dev \
+    libxml2-utils \
+    libxslt-dev \
+    pkg-config \
+    xsltproc \
+    && true
+
+WORKDIR /src
+COPY . /src
+
+RUN ./bootstrap.sh
+# docbook is a nightmare
+RUN ./configure --disable-doc-gen
+RUN make
