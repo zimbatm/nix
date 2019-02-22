@@ -297,7 +297,7 @@ let
           substitute ${./scripts/install.in} $out/install \
             ${pkgs.lib.concatMapStrings
               (system: "--replace '@binaryTarball_${system}@' $(nix hash-file --base16 --type sha256 ${binaryTarball.${system}}/*.tar.bz2) ")
-              [ "x86_64-linux" "i686-linux" "x86_64-darwin" "aarch64-linux" ]
+              systems
             } \
             --replace '@nixVersion@' ${build.x86_64-linux.src.version}
 
@@ -311,21 +311,16 @@ let
       meta.description = "Release-critical builds";
       constituents =
         [ tarball
-          build.i686-linux
-          build.x86_64-darwin
-          build.x86_64-linux
-          build.aarch64-linux
-          binaryTarball.i686-linux
-          binaryTarball.x86_64-darwin
-          binaryTarball.x86_64-linux
-          binaryTarball.aarch64-linux
           tests.remoteBuilds
           tests.nix-copy-closure
           tests.binaryTarball
           tests.evalNixpkgs
           tests.evalNixOS
           installerScript
-        ];
+        ]
+        ++ map (system: build."${system}") systems
+        ++ map (system: binaryTarball."${system}") systems
+        ;
     };
 
   };
