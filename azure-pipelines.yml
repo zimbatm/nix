@@ -4,28 +4,39 @@
 # https://aka.ms/yaml
 
 jobs:
-- job: Windows
-  pool:
-    vmImage: 'vs2017-win2016'
-  steps:
-  - script: echo hello from Windows
+# - job: Windows
+#   pool:
+#     vmImage: 'vs2017-win2016'
+#   steps:
+#   - script: echo hello from Windows
 - job: macOS
   pool:
     vmImage: 'macOS-10.13'
   steps:
-  - script: echo hello from macOS
+  - script: |
+      sudo mkdir -p /nix
+      sudo chown $(id -u):$(id -g) /nix
+      bash <(curl https://nixos.org/nix/install)
+      # Configure nix
+      sudo mkdir -p /etc/nix
+      echo "sandbox = true" | sudo tee -a /etc/nix/nix.conf
+    displayName: 'Install Nix'
+  - script: |
+      . $HOME/.nix-profile/etc/profile.d/nix.sh
+      nix-build release.nix --arg systems '[builtins.currentSystem]' -A tests --max-jobs 2
 - job: Linux
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
   - script: |
       sudo mkdir -p /nix
-      sudo chown circleci /nix
+      sudo chown $(id -u):$(id -g) /nix
       bash <(curl https://nixos.org/nix/install)
-      echo ". $HOME/.nix-profile/etc/profile.d/nix.sh" >> $BASH_ENV
+      # Configure nix
       sudo mkdir -p /etc/nix
-      # Enable sandbox
       echo "sandbox = true" | sudo tee -a /etc/nix/nix.conf
     displayName: 'Install Nix'
-  - script: nix-build release.nix --arg systems '[builtins.currentSystem]' -A tests --max-jobs 2
+  - script: |
+      . $HOME/.nix-profile/etc/profile.d/nix.sh
+      nix-build release.nix --arg systems '[builtins.currentSystem]' -A tests --max-jobs 2
     displayName: 'Build'
