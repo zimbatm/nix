@@ -1,0 +1,29 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+pr:
+  autoCancel: true
+
+pool:
+  vmImage: 'Ubuntu-16.04'
+
+
+steps:
+- script: |
+    sudo mkdir -p /nix
+    sudo chown circleci /nix
+    bash <(curl https://nixos.org/nix/install)
+    echo ". $HOME/.nix-profile/etc/profile.d/nix.sh" >> $BASH_ENV
+    sudo mkdir -p /etc/nix
+    # Enable sandbox
+    echo "sandbox = true" | sudo tee -a /etc/nix/nix.conf
+
+  displayName: 'Install Nix'
+
+- script: nix-build release.nix --arg systems '[builtins.currentSystem]' -A tests --max-jobs 2
+  displayName: 'Build'
