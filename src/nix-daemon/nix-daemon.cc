@@ -1013,7 +1013,7 @@ static void daemonLoop(char * * argv)
             if (matchUser(user, group, trustedUsers))
                 trusted = true;
 
-            if ((!trusted && !matchUser(user, group, allowedUsers)) || group == settings.buildUsersGroup)
+            if (!trusted && !matchUser(user, group, allowedUsers))
                 throw Error(format("user '%1%' is not allowed to connect to the Nix daemon") % user);
 
             printInfo(format((string) "accepted connection from pid %1%, user %2%" + (trusted ? " (trusted)" : ""))
