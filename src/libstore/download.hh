@@ -29,6 +29,9 @@ struct DownloadSettings : Config
 
     Setting<unsigned int> tries{this, 5, "download-attempts",
         "How often Nix will attempt to download a file before giving up."};
+
+    Setting<std::string> extraHeader{this, "", "extra-header",
+        "add extra header to the request"};
 };
 
 extern DownloadSettings downloadSettings;

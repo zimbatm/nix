@@ -96,6 +96,8 @@ struct CurlDownloader : public Downloader
                 requestHeaders = curl_slist_append(requestHeaders, ("If-None-Match: " + request.expectedETag).c_str());
             if (!request.mimeType.empty())
                 requestHeaders = curl_slist_append(requestHeaders, ("Content-Type: " + request.mimeType).c_str());
+            if (downloadSettings.extraHeader != "")
+                requestHeaders = curl_slist_append(requestHeaders, downloadSettings.extraHeader.get().c_str());
         }
 
         ~DownloadItem()
