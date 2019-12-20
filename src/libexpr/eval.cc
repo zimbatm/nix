@@ -1228,14 +1228,10 @@ void EvalState::autoCallFunction(Bindings & args, Value & fun, Value & res)
     }
 
     Value * actualArgs = allocValue();
-    mkAttrs(*actualArgs, fun.lambda.fun->formals->formals.size());
+    mkAttrs(*actualArgs, args.size());
 
-    for (auto & i : fun.lambda.fun->formals->formals) {
-        Bindings::iterator j = args.find(i.name);
-        if (j != args.end())
-            actualArgs->attrs->push_back(*j);
-        else if (!i.def)
-            throwTypeError("cannot auto-call a function that has an argument without a default value ('%1%')", i.name);
+    for (auto x : args) {
+        actualArgs->attrs->push_back(x);
     }
 
     actualArgs->attrs->sort();
