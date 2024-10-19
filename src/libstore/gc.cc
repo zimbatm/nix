@@ -795,28 +795,33 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
         else
             printInfo("determining live/dead paths...");
 
-        try {
-            AutoCloseDir dir(opendir(realStoreDir.get().c_str()));
-            if (!dir) throw SysError("opening directory '%1%'", realStoreDir);
+        if (options.ignoreUnregisteredPaths) {
+            for (auto & storePath : queryAllValidPaths())
+                deleteReferrersClosure(storePath);
+        } else {
+            try {
+                AutoCloseDir dir(opendir(realStoreDir.get().c_str()));
+                if (!dir) throw SysError("opening directory '%1%'", realStoreDir);
 
-            /* Read the store and delete all paths that are invalid or
-               unreachable. We don't use readDirectory() here so that
-               GCing can start faster. */
-            auto linksName = baseNameOf(linksDir);
-            Paths entries;
-            struct dirent * dirent;
-            while (errno = 0, dirent = readdir(dir.get())) {
-                checkInterrupt();
-                std::string name = dirent->d_name;
-                if (name == "." || name == ".." || name == linksName) continue;
+                /* Read the store and delete all paths that are invalid or
+                   unreachable. We don't use readDirectory() here so that
+                   GCing can start faster. */
+                auto linksName = baseNameOf(linksDir);
+                Paths entries;
+                struct dirent * dirent;
+                while (errno = 0, dirent = readdir(dir.get())) {
+                    checkInterrupt();
+                    std::string name = dirent->d_name;
+                    if (name == "." || name == ".." || name == linksName) continue;
 
-                if (auto storePath = maybeParseStorePath(storeDir + "/" + name))
-                    deleteReferrersClosure(*storePath);
-                else
-                    deleteFromStore(name);
+                    if (auto storePath = maybeParseStorePath(storeDir + "/" + name))
+                        deleteReferrersClosure(*storePath);
+                    else
+                        deleteFromStore(name);
 
+                }
+            } catch (GCLimitReached & e) {
             }
-        } catch (GCLimitReached & e) {
         }
     }
 

@@ -18,6 +18,11 @@ struct CmdStoreDelete : StorePathsCommand
             .description = "Do not check whether the paths are reachable from a root.",
             .handler = {&options.ignoreLiveness, true}
         });
+        addFlag({
+            .longName = "ignore-unregistered-paths",
+            .description = "Speed up GC by not checking for unregistered paths. Faster.",
+            .handler = {&options.ignoreUnregisteredPaths, true}
+        });
     }
 
     std::string description() override

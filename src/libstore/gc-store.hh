@@ -45,6 +45,13 @@ struct GCOptions
     bool ignoreLiveness{false};
 
     /**
+     * If `ignoreUnregisteredPaths` is set, then scanning for paths is using the SQLite
+     * instead of the readdir scan. This scales better, but also misses paths
+     * that haven't been registered in the DB.
+     */
+    bool ignoreUnregisteredPaths{false};
+
+    /**
      * For `gcDeleteSpecific`, the paths to delete.
      */
     StorePathSet pathsToDelete;
