@@ -279,6 +279,22 @@ struct EvalSettings : Config
 
           This option can be enabled by setting `NIX_ABORT_ON_WARN=1` in the environment.
         )"};
+
+    Setting<std::optional<Path>> traceFileAccess{this, std::nullopt, "trace-file-access",
+        R"(
+          If set, Nix will log all file system accesses during evaluation to the given file path.
+          The trace is written in JSON Lines format (one JSON object per line) containing:
+          - `type`: "file" or "directory"
+          - `path`: absolute path of the file/directory
+          - `operation`: "read", "stat", or "readdir"
+          - `size`: file size in bytes (for files)
+          - `mtime`: modification time as unix timestamp
+          - `exists`: whether the file/directory exists
+          - `timestamp`: when the access occurred (milliseconds since epoch)
+
+          This is useful for understanding what files are accessed during evaluation and for
+          debugging pure evaluation mode restrictions.
+        )"};
 };
 
 /**

@@ -16,6 +16,7 @@
 #include "nix/expr/print.hh"
 #include "nix/fetchers/filtering-source-accessor.hh"
 #include "nix/util/memory-source-accessor.hh"
+#include "nix/util/tracing-source-accessor.hh"
 #include "nix/expr/gc-small-vector.hh"
 #include "nix/util/url.hh"
 #include "nix/fetchers/fetch-to-store.hh"
@@ -288,6 +289,12 @@ EvalState::EvalState(
                     ? storeFS
                     : makeUnionSourceAccessor({accessor, storeFS});
             }
+
+            /* Apply file access tracing if needed. This must be done before
+               access control to ensure the trace file can be opened without
+               restrictions. */
+            if (settings.traceFileAccess.get())
+                accessor = make_ref<TracingSourceAccessor>(accessor, *settings.traceFileAccess.get());
 
             /* Apply access control if needed. */
             if (settings.restrictEval || settings.pureEval)

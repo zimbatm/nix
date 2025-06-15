@@ -60,16 +60,19 @@ MemorySourceAccessor::Stat MemorySourceAccessor::File::lstat() const
                 .type = tRegular,
                 .fileSize = r.contents.size(),
                 .isExecutable = r.executable,
+                .mtime = 1, // Use 1 for consistency with NAR/store convention
             };
         },
         [](const Directory &) {
             return Stat {
                 .type = tDirectory,
+                .mtime = 1,
             };
         },
         [](const Symlink &) {
             return Stat {
                 .type = tSymlink,
+                .mtime = 1,
             };
         },
     }, this->raw);

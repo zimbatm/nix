@@ -70,6 +70,7 @@ sources = files(
   'strings.cc',
   'suggestions.cc',
   'terminal.cc',
+  'tracing-source-accessor.cc',
   'url.cc',
   'util.cc',
   'xml-writer.cc',

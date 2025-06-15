@@ -17,6 +17,7 @@ struct CmdEval : MixJSON, InstallableValueCommand, MixReadOnlyOption
     bool raw = false;
     std::optional<std::string> apply;
     std::optional<std::filesystem::path> writeTo;
+    std::optional<std::filesystem::path> traceFileAccess;
 
     CmdEval() : InstallableValueCommand()
     {
@@ -39,6 +40,13 @@ struct CmdEval : MixJSON, InstallableValueCommand, MixReadOnlyOption
             .labels = {"path"},
             .handler = {&writeTo},
         });
+
+        addFlag({
+            .longName = "trace-file-access",
+            .description = "Write a trace of all file accesses during evaluation to *path*.",
+            .labels = {"path"},
+            .handler = {&traceFileAccess},
+        });
     }
 
     std::string description() override
@@ -59,6 +67,9 @@ struct CmdEval : MixJSON, InstallableValueCommand, MixReadOnlyOption
     {
         if (raw && json)
             throw UsageError("--raw and --json are mutually exclusive");
+
+        if (traceFileAccess)
+            evalSettings.traceFileAccess = *traceFileAccess;
 
         auto state = getEvalState();
 

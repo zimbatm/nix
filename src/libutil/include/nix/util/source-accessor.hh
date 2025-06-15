@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <ctime>
 
 #include "nix/util/canon-path.hh"
 #include "nix/util/hash.hh"
@@ -107,6 +108,12 @@ struct SourceAccessor : std::enable_shared_from_this<SourceAccessor>
          * For regular files only: whether this is an executable.
          */
         bool isExecutable = false;
+
+        /**
+         * The modification time of the file or directory.
+         * Unix timestamp in seconds.
+         */
+        std::optional<time_t> mtime;
 
         /**
          * For regular files only: the position of the contents of this

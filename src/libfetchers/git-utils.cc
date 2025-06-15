@@ -669,6 +669,7 @@ struct GitSourceAccessor : SourceAccessor
     {
         ref<GitRepoImpl> repo;
         Object root;
+        Hash rev;
         std::optional<lfs::Fetch> lfsFetch = std::nullopt;
     };
 
@@ -679,6 +680,7 @@ struct GitSourceAccessor : SourceAccessor
                 State {
                     .repo = repo_,
                     .root = peelToTreeOrBlob(lookupObject(*repo_, hashToOID(rev)).get()),
+                    .rev = rev,
                     .lfsFetch = smudgeLfs ? std::make_optional(lfs::Fetch(*repo_, hashToOID(rev))) : std::nullopt,
                 }
             }
@@ -715,6 +717,11 @@ struct GitSourceAccessor : SourceAccessor
         return readBlob(path, false);
     }
 
+    time_t getCommitTime(State & state)
+    {
+        return state.repo->getLastModified(state.rev);
+    }
+
     bool pathExists(const CanonPath & path) override
     {
         auto state(state_.lock());
@@ -725,8 +732,11 @@ struct GitSourceAccessor : SourceAccessor
     {
         auto state(state_.lock());
 
+        // Get the commit time once for all cases
+        auto mtime = getCommitTime(*state);
+
         if (path.isRoot())
-            return Stat { .type = git_object_type(state->root.get()) == GIT_OBJECT_TREE ? tDirectory : tRegular };
+            return Stat { .type = git_object_type(state->root.get()) == GIT_OBJECT_TREE ? tDirectory : tRegular, .mtime = mtime };
 
         auto entry = lookup(*state, path);
         if (!entry)
@@ -735,20 +745,20 @@ struct GitSourceAccessor : SourceAccessor
         auto mode = git_tree_entry_filemode(entry);
 
         if (mode == GIT_FILEMODE_TREE)
-            return Stat { .type = tDirectory };
+            return Stat { .type = tDirectory, .mtime = mtime };
 
         else if (mode == GIT_FILEMODE_BLOB)
-            return Stat { .type = tRegular };
+            return Stat { .type = tRegular, .mtime = mtime };
 
         else if (mode == GIT_FILEMODE_BLOB_EXECUTABLE)
-            return Stat { .type = tRegular, .isExecutable = true };
+            return Stat { .type = tRegular, .isExecutable = true, .mtime = mtime };
 
         else if (mode == GIT_FILEMODE_LINK)
-            return Stat { .type = tSymlink };
+            return Stat { .type = tSymlink, .mtime = mtime };
 
         else if (mode == GIT_FILEMODE_COMMIT)
             // Treat submodules as an empty directory.
-            return Stat { .type = tDirectory };
+            return Stat { .type = tDirectory, .mtime = mtime };
 
         else
             throw Error("file '%s' has an unsupported Git file type");

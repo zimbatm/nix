@@ -100,6 +100,7 @@ struct NarAccessor : public SourceAccessor
                 .type = Type::tDirectory,
                 .fileSize = 0,
                 .isExecutable = false,
+                .mtime = 1,
                 .narOffset = 0
             } });
         }
@@ -110,6 +111,7 @@ struct NarAccessor : public SourceAccessor
                 .type = Type::tRegular,
                 .fileSize = 0,
                 .isExecutable = false,
+                .mtime = 1,
                 .narOffset = 0
             } });
             NarMemberConstructor nmc { nm, pos };
@@ -120,7 +122,7 @@ struct NarAccessor : public SourceAccessor
         {
             createMember(path,
                 NarMember{
-                    .stat = {.type = Type::tSymlink},
+                    .stat = {.type = Type::tSymlink, .mtime = 1},
                     .target = target});
         }
 
@@ -156,7 +158,7 @@ struct NarAccessor : public SourceAccessor
             std::string type = v["type"];
 
             if (type == "directory") {
-                member.stat = {.type = Type::tDirectory};
+                member.stat = {.type = Type::tDirectory, .mtime = 1};
                 for (const auto &[name, function] : v["entries"].items()) {
                     recurse(member.children[name], function);
                 }
@@ -165,10 +167,11 @@ struct NarAccessor : public SourceAccessor
                     .type = Type::tRegular,
                     .fileSize = v["size"],
                     .isExecutable = v.value("executable", false),
+                    .mtime = 1,
                     .narOffset = v["narOffset"]
                 };
             } else if (type == "symlink") {
-                member.stat = {.type = Type::tSymlink};
+                member.stat = {.type = Type::tSymlink, .mtime = 1};
                 member.target = v.value("target", "");
             } else return;
         };

@@ -110,6 +110,8 @@ suites = [
       'impure-eval.sh',
       'pure-eval.sh',
       'eval.sh',
+      'file-access-tracing.sh',
+      'file-access-tracing-edge-cases.sh',
       'repl.sh',
       'binary-cache-build-remote.sh',
       'search.sh',
