@@ -138,7 +138,17 @@ struct WorkerProto
     using FeatureSet = std::set<Feature, std::less<>>;
 
     static const FeatureSet allFeatures;
+    
+    /**
+     * Convert an operation code to a human-readable string.
+     */
+    static std::string opToString(Op op);
 };
+
+/**
+ * Convert a build mode to a human-readable string.
+ */
+std::string buildModeToString(BuildMode mode);
 
 enum struct WorkerProto::Op : uint64_t
 {

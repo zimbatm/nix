@@ -402,7 +402,8 @@ static void daemonLoop(std::optional<TrustedFlag> forceTrustClientOpt)
                     FdSource(remote.get()),
                     FdSink(remote.get()),
                     trusted,
-                    NotRecursive);
+                    NotRecursive,
+                    user);
 
                 exit(0);
             }, options);

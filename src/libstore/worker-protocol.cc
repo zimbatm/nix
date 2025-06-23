@@ -14,6 +14,67 @@ namespace nix {
 
 /* protocol-specific definitions */
 
+std::string WorkerProto::opToString(Op op)
+{
+    switch (op) {
+    case Op::IsValidPath: return "IsValidPath";
+    case Op::HasSubstitutes: return "HasSubstitutes";
+    case Op::QueryPathHash: return "QueryPathHash";
+    case Op::QueryReferences: return "QueryReferences";
+    case Op::QueryReferrers: return "QueryReferrers";
+    case Op::AddToStore: return "AddToStore";
+    case Op::AddTextToStore: return "AddTextToStore";
+    case Op::BuildPaths: return "BuildPaths";
+    case Op::EnsurePath: return "EnsurePath";
+    case Op::AddTempRoot: return "AddTempRoot";
+    case Op::AddIndirectRoot: return "AddIndirectRoot";
+    case Op::SyncWithGC: return "SyncWithGC";
+    case Op::FindRoots: return "FindRoots";
+    case Op::ExportPath: return "ExportPath";
+    case Op::QueryDeriver: return "QueryDeriver";
+    case Op::SetOptions: return "SetOptions";
+    case Op::CollectGarbage: return "CollectGarbage";
+    case Op::QuerySubstitutablePathInfo: return "QuerySubstitutablePathInfo";
+    case Op::QueryDerivationOutputs: return "QueryDerivationOutputs";
+    case Op::QueryAllValidPaths: return "QueryAllValidPaths";
+    case Op::QueryFailedPaths: return "QueryFailedPaths";
+    case Op::ClearFailedPaths: return "ClearFailedPaths";
+    case Op::QueryPathInfo: return "QueryPathInfo";
+    case Op::ImportPaths: return "ImportPaths";
+    case Op::QueryDerivationOutputNames: return "QueryDerivationOutputNames";
+    case Op::QueryPathFromHashPart: return "QueryPathFromHashPart";
+    case Op::QuerySubstitutablePathInfos: return "QuerySubstitutablePathInfos";
+    case Op::QueryValidPaths: return "QueryValidPaths";
+    case Op::QuerySubstitutablePaths: return "QuerySubstitutablePaths";
+    case Op::QueryValidDerivers: return "QueryValidDerivers";
+    case Op::OptimiseStore: return "OptimiseStore";
+    case Op::VerifyStore: return "VerifyStore";
+    case Op::BuildDerivation: return "BuildDerivation";
+    case Op::AddSignatures: return "AddSignatures";
+    case Op::NarFromPath: return "NarFromPath";
+    case Op::AddToStoreNar: return "AddToStoreNar";
+    case Op::QueryMissing: return "QueryMissing";
+    case Op::QueryDerivationOutputMap: return "QueryDerivationOutputMap";
+    case Op::RegisterDrvOutput: return "RegisterDrvOutput";
+    case Op::QueryRealisation: return "QueryRealisation";
+    case Op::AddMultipleToStore: return "AddMultipleToStore";
+    case Op::AddBuildLog: return "AddBuildLog";
+    case Op::BuildPathsWithResults: return "BuildPathsWithResults";
+    case Op::AddPermRoot: return "AddPermRoot";
+    default: return "UnknownOp(" + std::to_string(static_cast<uint64_t>(op)) + ")";
+    }
+}
+
+std::string buildModeToString(BuildMode mode)
+{
+    switch (mode) {
+    case bmNormal: return "normal";
+    case bmRepair: return "repair";
+    case bmCheck: return "check";
+    default: return "unknown";
+    }
+}
+
 BuildMode WorkerProto::Serialise<BuildMode>::read(const StoreDirConfig & store, WorkerProto::ReadConn conn)
 {
     auto temp = readNum<uint8_t>(conn.from);

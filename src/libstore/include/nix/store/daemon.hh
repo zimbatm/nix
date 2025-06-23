@@ -13,6 +13,7 @@ void processConnection(
     FdSource && from,
     FdSink && to,
     TrustedFlag trusted,
-    RecursiveFlag recursive);
+    RecursiveFlag recursive,
+    const std::string & userName = "unknown");
 
 }

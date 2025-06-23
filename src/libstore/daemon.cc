@@ -22,6 +22,8 @@
 #endif
 
 #include <sstream>
+#include <chrono>
+#include <iomanip>
 
 namespace nix::daemon {
 
@@ -272,12 +274,31 @@ struct ClientSettings
 static void performOp(TunnelLogger * logger, ref<Store> store,
     TrustedFlag trusted, RecursiveFlag recursive,
     WorkerProto::BasicServerConnection & conn,
-    WorkerProto::Op op)
+    WorkerProto::Op op,
+    const std::string & userName = "unknown")
 {
     WorkerProto::ReadConn rconn(conn);
     WorkerProto::WriteConn wconn(conn);
 
-    switch (op) {
+    // Audit log the operation
+    auto auditLog = [&](const std::string & details = "", bool success = true) {
+        if (settings.enableDaemonAuditLog) {
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+            std::stringstream auditMsg;
+            auditMsg << "[AUDIT] "
+                     << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S")
+                     << " user=" << userName
+                     << " trusted=" << (trusted ? "yes" : "no")
+                     << " op=" << WorkerProto::opToString(op)
+                     << (details.empty() ? "" : " details=" + details)
+                     << " success=" << (success ? "yes" : "no");
+            printInfo(auditMsg.str());
+        }
+    };
+
+    try {
+        switch (op) {
 
     case WorkerProto::Op::IsValidPath: {
         auto path = store->parseStorePath(readString(conn.from));
@@ -399,6 +420,9 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
             bool repairBool;
             conn.from >> repairBool;
             auto repair = RepairFlag{repairBool};
+            
+            // Audit log add to store
+            auditLog("name=" + name + " method=" + camStr);
 
             logger->startWork();
             auto pathInfo = [&]() {
@@ -548,6 +572,14 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
             if (mode == bmRepair && !trusted)
                 throw Error("repairing is not allowed because you are not in 'trusted-users'");
         }
+        
+        // Audit log build paths
+        std::stringstream paths;
+        for (const auto & drv : drvs) {
+            paths << drv.to_string(*store) << " ";
+        }
+        auditLog("paths=" + paths.str() + "mode=" + buildModeToString(mode));
+        
         logger->startWork();
         store->buildPaths(drvs, mode);
         logger->stopWork();
@@ -993,6 +1025,10 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
 
     case WorkerProto::Op::AddBuildLog: {
         StorePath path{readString(conn.from)};
+        
+        // Audit log privileged operation
+        auditLog("path=" + store->printStorePath(path) + " privileged=yes");
+        
         logger->startWork();
         if (!trusted)
             throw Error("you are not privileged to add logs");
@@ -1015,6 +1051,19 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
     default:
         throw Error("invalid operation %1%", op);
     }
+    
+    // Log successful completion
+    auditLog("", true);
+    
+    } catch (Error & e) {
+        // Log failure
+        auditLog(e.what(), false);
+        throw;
+    } catch (std::exception & e) {
+        // Log failure
+        auditLog(e.what(), false);
+        throw;
+    }
 }
 
 void processConnection(
@@ -1022,7 +1071,8 @@ void processConnection(
     FdSource && from,
     FdSink && to,
     TrustedFlag trusted,
-    RecursiveFlag recursive)
+    RecursiveFlag recursive,
+    const std::string & userName)
 {
 #ifndef _WIN32 // TODO need graceful async exit support on Windows?
     auto monitor = !recursive ? std::make_unique<MonitorFdHup>(from.fd) : nullptr;
@@ -1096,7 +1146,7 @@ void processConnection(
             debug("performing daemon worker op: %d", op);
 
             try {
-                performOp(tunnelLogger, store, trusted, recursive, conn, op);
+                performOp(tunnelLogger, store, trusted, recursive, conn, op, userName);
             } catch (Error & e) {
                 /* If we're not in a state where we can send replies, then
                    something went wrong processing the input of the

@@ -458,6 +458,30 @@ public:
         )",
         {}, false};
 
+    Setting<bool> enableDaemonAuditLog{
+        this, false, "enable-daemon-audit-log",
+        R"(
+          Whether to enable audit logging of nix-daemon operations.
+          
+          If set to `true`, the nix-daemon will log all operations performed by
+          users, including the username, operation type, parameters, and whether
+          the operation succeeded or failed. This is useful for security auditing
+          and compliance requirements.
+          
+          The audit logs are written to the standard Nix log output with an [AUDIT]
+          prefix for easy filtering. Each log entry includes:
+          - Timestamp
+          - Username
+          - Whether the user is trusted
+          - Operation name
+          - Operation details (paths, parameters)
+          - Success/failure status
+          
+          Note that enabling audit logging may have a small performance impact
+          and will increase log verbosity.
+        )"};
+
+
     Setting<bool> autoAllocateUids{this, false, "auto-allocate-uids",
         R"(
           Whether to select UIDs for builds automatically, instead of using the

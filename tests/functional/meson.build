@@ -168,6 +168,7 @@ suites = [
       'extra-sandbox-profile.sh',
       'help.sh',
       'symlinks.sh',
+      'daemon-audit-log.sh',
     ],
     'workdir': meson.current_source_dir(),
   },
