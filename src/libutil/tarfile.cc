@@ -5,6 +5,11 @@
 #include "nix/util/serialise.hh"
 #include "nix/util/tarfile.hh"
 #include "nix/util/file-system.hh"
+#include "nix/util/hash.hh"
+
+#include <algorithm>
+#include <fstream>
+#include <set>
 
 namespace nix {
 
@@ -245,6 +250,145 @@ time_t unpackTarfileToSink(TarArchive & archive, ExtendedFileSystemObjectSink & 
     }
 
     return lastModified;
+}
+
+namespace {
+
+/**
+ * Callback for libarchive to write data to a Sink.
+ */
+struct TarWriteData
+{
+    Sink * sink;
+    HashSink * hashSink;
+};
+
+ssize_t tarWriteCallback(struct archive *, void * clientData, const void * buffer, size_t length)
+{
+    auto * data = static_cast<TarWriteData *>(clientData);
+    std::string_view sv(static_cast<const char *>(buffer), length);
+    (*data->sink)(sv);
+    (*data->hashSink)(sv);
+    return length;
+}
+
+/**
+ * Recursively collect all paths under a directory, sorted for determinism.
+ */
+void collectPaths(const std::filesystem::path & root, const std::filesystem::path & current, std::set<std::filesystem::path> & paths)
+{
+    for (const auto & entry : std::filesystem::directory_iterator(current)) {
+        auto relPath = std::filesystem::relative(entry.path(), root);
+        paths.insert(relPath);
+        if (entry.is_directory() && !entry.is_symlink()) {
+            collectPaths(root, entry.path(), paths);
+        }
+    }
+}
+
+} // anonymous namespace
+
+Hash createStoreTar(const std::filesystem::path & storePath, Sink & sink)
+{
+    // Create a write archive with pax restricted format (POSIX.1-2001)
+    struct archive * a = archive_write_new();
+    if (!a)
+        throw Error("failed to create tar archive");
+
+    auto cleanup = Finally([&]() {
+        archive_write_free(a);
+    });
+
+    archive_write_set_format_pax_restricted(a);
+
+    // Set up callbacks to write to sink and compute hash
+    HashSink hashSink(HashAlgorithm::SHA256);
+    TarWriteData writeData{&sink, &hashSink};
+
+    archive_write_open(a, &writeData, nullptr, tarWriteCallback, nullptr);
+
+    // Get the parent directory and the store path name
+    auto parentDir = storePath.parent_path();
+    auto storePathName = storePath.filename();
+
+    // Collect all paths recursively, sorted for determinism
+    std::set<std::filesystem::path> relativePaths;
+    relativePaths.insert(storePathName); // Include the root directory itself
+    collectPaths(parentDir, storePath, relativePaths);
+
+    // Add each entry to the archive
+    for (const auto & relPath : relativePaths) {
+        auto fullPath = parentDir / relPath;
+        auto stat = std::filesystem::symlink_status(fullPath);
+
+        struct archive_entry * entry = archive_entry_new();
+        auto entryCleanup = Finally([&]() {
+            archive_entry_free(entry);
+        });
+
+        // Set the pathname with the store path prefix (e.g., "nix/store/xxx-name/...")
+        // We use the path relative to the parent of the store path's parent
+        // So for /nix/store/abc-hello/bin/hello, we store as nix/store/abc-hello/bin/hello
+        auto archivePath = std::filesystem::path("nix") / "store" / relPath;
+        archive_entry_set_pathname(entry, archivePath.string().c_str());
+
+        // Canonical timestamps (mtime = 1, like Nix's mtimeStore)
+        archive_entry_set_mtime(entry, 1, 0);
+        archive_entry_set_atime(entry, 1, 0);
+        archive_entry_set_ctime(entry, 1, 0);
+
+        // Canonical uid/gid
+        archive_entry_set_uid(entry, 0);
+        archive_entry_set_gid(entry, 0);
+        archive_entry_set_uname(entry, "root");
+        archive_entry_set_gname(entry, "root");
+
+        if (std::filesystem::is_symlink(stat)) {
+            // Symlink
+            auto target = std::filesystem::read_symlink(fullPath);
+            archive_entry_set_filetype(entry, AE_IFLNK);
+            archive_entry_set_symlink(entry, target.string().c_str());
+            archive_entry_set_perm(entry, 0777);
+        } else if (std::filesystem::is_directory(stat)) {
+            // Directory
+            archive_entry_set_filetype(entry, AE_IFDIR);
+            archive_entry_set_perm(entry, 0555);
+        } else if (std::filesystem::is_regular_file(stat)) {
+            // Regular file
+            archive_entry_set_filetype(entry, AE_IFREG);
+            auto perms = std::filesystem::status(fullPath).permissions();
+            bool isExecutable = (perms & std::filesystem::perms::owner_exec) != std::filesystem::perms::none;
+            archive_entry_set_perm(entry, isExecutable ? 0555 : 0444);
+            archive_entry_set_size(entry, std::filesystem::file_size(fullPath));
+        } else {
+            throw Error("unsupported file type for '%s'", fullPath.string());
+        }
+
+        int r = archive_write_header(a, entry);
+        if (r != ARCHIVE_OK)
+            throw Error("failed to write tar header for '%s': %s", fullPath.string(), archive_error_string(a));
+
+        // Write file contents for regular files
+        if (std::filesystem::is_regular_file(stat) && !std::filesystem::is_symlink(stat)) {
+            std::ifstream file(fullPath, std::ios::binary);
+            if (!file)
+                throw Error("failed to open '%s' for reading", fullPath.string());
+
+            char buffer[65536];
+            while (file) {
+                file.read(buffer, sizeof(buffer));
+                auto bytesRead = file.gcount();
+                if (bytesRead > 0) {
+                    if (archive_write_data(a, buffer, bytesRead) < 0)
+                        throw Error("failed to write data for '%s': %s", fullPath.string(), archive_error_string(a));
+                }
+            }
+        }
+    }
+
+    archive_write_close(a);
+
+    return hashSink.finish().hash;
 }
 
 } // namespace nix

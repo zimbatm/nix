@@ -97,7 +97,7 @@ struct curlFileTransfer : public FileTransfer
 
         std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
 
-        inline static const std::set<long> successfulStatuses{200, 201, 204, 206, 304, 0 /* other protocol */};
+        inline static const std::set<long> successfulStatuses{200, 201, 202, 204, 206, 304, 0 /* other protocol */};
 
         /* Get the HTTP status code, or 0 for other protocols. */
         long getHTTPStatus()
@@ -306,6 +306,10 @@ struct curlFileTransfer : public FileTransfer
                             result.immutableUrl = match.str(1);
                         else
                             debug("got invalid link header '%s'", value);
+                    }
+
+                    else if (name == "location") {
+                        result.locationHeader = trim(line.substr(i + 1));
                     }
                 }
             }

@@ -3,6 +3,7 @@
 
 #include "nix/util/serialise.hh"
 #include "nix/util/fs-sink.hh"
+#include "nix/util/hash.hh"
 #include <archive.h>
 
 namespace nix {
@@ -42,5 +43,24 @@ void unpackTarfile(Source & source, const std::filesystem::path & destDir);
 void unpackTarfile(const std::filesystem::path & tarFile, const std::filesystem::path & destDir);
 
 time_t unpackTarfileToSink(TarArchive & archive, ExtendedFileSystemObjectSink & parseSink);
+
+/**
+ * Create a tar archive from a store path.
+ *
+ * The archive contains entries with paths like "nix/store/xxx-name/..."
+ * so that extracting the tar to "/" places files in the correct location.
+ *
+ * Uses canonical settings for deterministic output:
+ * - mtime = 1 (like Nix's mtimeStore)
+ * - uid/gid = 0 (root)
+ * - mode = 0444/0555 for files, 0555 for directories
+ * - Entries sorted alphabetically
+ * - POSIX.1-2001 pax restricted format
+ *
+ * @param storePath The store path to archive (e.g., /nix/store/xxx-name)
+ * @param sink Where to write the tar data
+ * @return SHA256 hash of the tar content
+ */
+Hash createStoreTar(const std::filesystem::path & storePath, Sink & sink);
 
 } // namespace nix

@@ -246,6 +246,13 @@ struct FileTransferResult
      * rel="immutable"` header.
      */
     std::optional<std::string> immutableUrl;
+
+    /**
+     * The Location header from the response, if present.
+     * Used for OCI registry uploads which return 202 with a Location
+     * header pointing to the upload session URL.
+     */
+    std::optional<std::string> locationHeader;
 };
 
 class Store;
