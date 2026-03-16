@@ -61,6 +61,11 @@ enum struct JobCategory {
      */
     Substitution,
     /**
+     * An in-process fetch (builtin:fetchurl without sandbox); purely I/O-bound.
+     * Has its own concurrency limit separate from builds.
+     */
+    Fetch,
+    /**
      * A goal that does no "real" work by itself, and just exists to depend on
      * other goals which *do* do real work. These goals therefore are not
      * limited.

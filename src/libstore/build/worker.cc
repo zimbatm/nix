@@ -29,6 +29,7 @@ Worker::Worker(Store & store, Store & evalStore)
 {
     nrLocalBuilds = 0;
     nrSubstitutions = 0;
+    nrFetchJobs = 0;
     lastWokenUp = steady_time_point::min();
 }
 
@@ -217,6 +218,11 @@ size_t Worker::getNrSubstitutions()
     return nrSubstitutions;
 }
 
+size_t Worker::getNrFetchJobs()
+{
+    return nrFetchJobs;
+}
+
 void Worker::childStarted(
     GoalPtr goal, const std::set<MuxablePipePollState::CommChannel> & channels, bool inBuildSlot, bool respectTimeouts)
 {
@@ -235,6 +241,9 @@ void Worker::childStarted(
             break;
         case JobCategory::Build:
             nrLocalBuilds++;
+            break;
+        case JobCategory::Fetch:
+            nrFetchJobs++;
             break;
         case JobCategory::Administration:
             /* Intentionally not limited, see docs */
@@ -266,6 +275,10 @@ void Worker::childTerminated(Goal * goal, JobCategory jobCategory, bool wakeSlee
             assert(nrLocalBuilds > 0);
             nrLocalBuilds--;
             break;
+        case JobCategory::Fetch:
+            assert(nrFetchJobs > 0);
+            nrFetchJobs--;
+            break;
         case JobCategory::Administration:
             /* Intentionally not limited, see docs */
             break;
@@ -292,9 +305,24 @@ void Worker::childTerminated(Goal * goal, JobCategory jobCategory, bool wakeSlee
 void Worker::waitForBuildSlot(GoalPtr goal)
 {
     goal->trace("wait for build slot");
-    bool isSubstitutionGoal = goal->jobCategory() == JobCategory::Substitution;
-    if ((!isSubstitutionGoal && getNrLocalBuilds() < settings.maxBuildJobs)
-        || (isSubstitutionGoal && getNrSubstitutions() < settings.maxSubstitutionJobs))
+    bool ready;
+    switch (goal->jobCategory()) {
+    case JobCategory::Substitution:
+        ready = getNrSubstitutions() < settings.maxSubstitutionJobs;
+        break;
+    case JobCategory::Fetch:
+        ready = getNrFetchJobs() < settings.maxFetchJobs;
+        break;
+    case JobCategory::Build:
+        ready = getNrLocalBuilds() < settings.maxBuildJobs;
+        break;
+    case JobCategory::Administration:
+        ready = true;
+        break;
+    default:
+        unreachable();
+    }
+    if (ready)
         wakeUp(goal); /* we can do it right away */
     else
         addToWeakGoals(wantingToBuild, goal);

@@ -108,6 +108,11 @@ private:
     size_t nrSubstitutions;
 
     /**
+     * Number of in-process fetch slots occupied.
+     */
+    size_t nrFetchJobs;
+
+    /**
      * Maps used to prevent multiple instantiations of a goal for the
      * same derivation / path.
      */
@@ -266,6 +271,11 @@ public:
      * Return the number of substitution processes currently running.
      */
     size_t getNrSubstitutions();
+
+    /**
+     * Return the number of in-process fetch jobs currently running.
+     */
+    size_t getNrFetchJobs();
 
     /**
      * Registers a running child process.  `inBuildSlot` means that

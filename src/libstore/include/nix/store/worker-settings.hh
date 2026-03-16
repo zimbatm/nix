@@ -81,6 +81,16 @@ public:
         )",
         {"substitution-max-jobs"}};
 
+    Setting<unsigned int> maxFetchJobs{
+        this,
+        16,
+        "max-fetch-jobs",
+        R"(
+          Maximum number of in-process fetch jobs (builtin:fetchurl without
+          sandbox) that Nix runs in parallel.  These are I/O-bound and do
+          not consume a build slot from `max-jobs`.  The default is `16`.
+        )"};
+
     Setting<time_t> maxSilentTime{
         this,
         0,

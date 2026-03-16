@@ -115,9 +115,11 @@ private:
 
     BuildError fixupBuilderFailureErrorMessage(BuilderFailureError msg, BuildLog & buildLog);
 
+    JobCategory effectiveJobCategory = JobCategory::Build;
+
     JobCategory jobCategory() const override
     {
-        return JobCategory::Build;
+        return effectiveJobCategory;
     };
 };
 
