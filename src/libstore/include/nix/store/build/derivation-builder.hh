@@ -223,6 +223,13 @@ DerivationBuilderUnique makeExternalDerivationBuilder(
     std::unique_ptr<DerivationBuilderCallbacks> miscMethods,
     DerivationBuilderParams params,
     const ExternalBuilder & handler);
+
+/**
+ * Create a builder that runs builtin:fetchurl in-process (no fork)
+ * using the daemon's shared FileTransfer for HTTP/2 connection pooling.
+ */
+DerivationBuilderUnique makeInProcessFetchBuilder(
+    LocalStore & store, std::unique_ptr<DerivationBuilderCallbacks> miscMethods, DerivationBuilderParams params);
 #endif
 
 } // namespace nix

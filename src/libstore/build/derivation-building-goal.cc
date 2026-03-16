@@ -804,11 +804,35 @@ Goal::Co DerivationBuildingGoal::buildLocally(
     DerivationBuilderUnique builder;
     Descriptor builderOut;
 
+    /* Use the in-process fetch builder for builtin:fetchurl with
+       network URLs (http/https/s3).  Non-network schemes like file://
+       must go through the sandboxed forked builder, since the
+       in-process path runs unsandboxed in the daemon (often as root)
+       and could otherwise read arbitrary host files. */
+    auto isNetworkUrl = [&]() -> bool {
+        auto it = drv->env.find("url");
+        if (it == drv->env.end()) return false;
+        auto & url = it->second;
+        return hasPrefix(url, "http://") || hasPrefix(url, "https://") || hasPrefix(url, "s3://");
+    };
+
+    bool useInProcessFetch = drv->isBuiltin()
+        && drv->builder == "builtin:fetchurl"
+        && (drv->type().isFixed() || drv->type().isImpure())
+        && isNetworkUrl();
+
+    if (useInProcessFetch)
+        effectiveJobCategory = JobCategory::Fetch;
+
     // Will continue here while waiting for a build user below
     while (true) {
 
-        unsigned int curBuilds = worker.getNrLocalBuilds();
-        if (curBuilds >= worker.settings.maxBuildJobs) {
+        auto [curCount, maxCount] = [&]() -> std::pair<unsigned int, unsigned int> {
+            if (effectiveJobCategory == JobCategory::Fetch)
+                return {worker.getNrFetchJobs(), worker.settings.maxFetchJobs};
+            return {worker.getNrLocalBuilds(), worker.settings.maxBuildJobs};
+        }();
+        if (curCount >= maxCount) {
             outputLocks.unlock();
             co_await waitForBuildSlot();
             co_return tryToBuild(std::move(inputPaths));
@@ -822,14 +846,17 @@ Goal::Co DerivationBuildingGoal::buildLocally(
             struct DerivationBuildingGoalCallbacks : DerivationBuilderCallbacks
             {
                 DerivationBuildingGoal & goal;
+                JobCategory jobCat;
                 std::function<void()> openLogFileFn;
                 std::function<void()> closeLogFileFn;
 
                 DerivationBuildingGoalCallbacks(
                     DerivationBuildingGoal & goal,
+                    JobCategory jobCat,
                     std::function<void()> openLogFileFn,
                     std::function<void()> closeLogFileFn)
                     : goal{goal}
+                    , jobCat{jobCat}
                     , openLogFileFn{std::move(openLogFileFn)}
                     , closeLogFileFn{std::move(closeLogFileFn)}
                 {
@@ -839,7 +866,7 @@ Goal::Co DerivationBuildingGoal::buildLocally(
 
                 void childTerminated() override
                 {
-                    goal.worker.childTerminated(&goal, JobCategory::Build);
+                    goal.worker.childTerminated(&goal, jobCat);
                 }
 
                 void openLogFile() override
@@ -894,17 +921,24 @@ Goal::Co DerivationBuildingGoal::buildLocally(
                 .desugaredEnv = std::move(desugaredEnv),
             };
 
-            /* If we have to wait and retry (see below), then `builder` will
-               already be created, so we don't need to create it again. */
-            builder = localBuildCap.externalBuilder
+            auto makeCallbacks = [&]() {
+                return std::make_unique<DerivationBuildingGoalCallbacks>(*this, effectiveJobCategory, openLogFile, closeLogFile);
+            };
+
+            builder = useInProcessFetch
+                          ? makeInProcessFetchBuilder(
+                                localBuildCap.localStore,
+                                makeCallbacks(),
+                                std::move(params))
+                      : localBuildCap.externalBuilder
                           ? makeExternalDerivationBuilder(
                                 localBuildCap.localStore,
-                                std::make_unique<DerivationBuildingGoalCallbacks>(*this, openLogFile, closeLogFile),
+                                makeCallbacks(),
                                 std::move(params),
                                 *localBuildCap.externalBuilder)
                           : makeDerivationBuilder(
                                 localBuildCap.localStore,
-                                std::make_unique<DerivationBuildingGoalCallbacks>(*this, openLogFile, closeLogFile),
+                                makeCallbacks(),
                                 std::move(params));
         }
 

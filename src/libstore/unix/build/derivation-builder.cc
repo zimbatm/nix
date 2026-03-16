@@ -19,7 +19,9 @@
 #include "nix/store/build/derivation-env-desugar.hh"
 #include "nix/util/terminal.hh"
 #include "nix/store/filetransfer.hh"
+#include "nix/util/compression.hh"
 
+#include <thread>
 #include <sys/un.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -2043,6 +2045,7 @@ StorePath DerivationBuilderImpl::makeFallbackPath(const StorePath & path)
 #include "linux-derivation-builder.cc"
 #include "darwin-derivation-builder.cc"
 #include "external-derivation-builder.cc"
+#include "inprocess-fetch-builder.cc"
 
 namespace nix {
 

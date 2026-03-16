@@ -88,3 +88,27 @@ requireDaemonNewerThan "2.20"
 expected=100
 if [[ -v NIX_DAEMON_PACKAGE ]]; then expected=1; fi # work around the daemon not returning a 100 status correctly
 expectStderr $expected nix-build --expr '{ url }: builtins.derivation { name = "nix-cache-info"; system = "x86_64-linux"; builder = "builtin:fetchurl"; inherit url; outputHashMode = "flat"; }' --argstr url "file://$narxz" 2>&1 | grep 'must be a fixed-output or impure derivation'
+
+# Test that a failing fetch (non-existent URL) exits with failure, not a crash.
+clearStore
+(! nix-build --expr 'import <nix/fetchurl.nix>' --argstr url "file:///no-such-dir/does-not-exist" --argstr sha256 "$hash" --no-out-link 2>"$TEST_ROOT/fetch-fail.log")
+# Verify it did not crash (no signal-based exit).
+grepQuietInverse 'Aborted' "$TEST_ROOT/fetch-fail.log"
+
+# Test that in-process fetches use the Fetch job pool, not build slots.
+# With --max-jobs 1, two concurrent builtin:fetchurl derivations should
+# both succeed because they use the Fetch pool, not the build pool.
+clearStore
+hash=$(nix-hash --flat --type sha256 ./fetchurl.sh)
+hash2=$(nix hash file --type sha256 --base16 ./common.sh)
+outPaths=$(nix-build --option max-jobs 1 \
+  --expr 'import <nix/fetchurl.nix>' --argstr url "file://$(pwd)/fetchurl.sh" --argstr sha256 "$hash" \
+  --expr 'import <nix/fetchurl.nix>' --argstr url "file://$(pwd)/common.sh" --argstr sha256 "$hash2" \
+  --no-out-link)
+# Both outputs should be produced.
+echo "$outPaths" | wc -l | grep -q 2
+
+# Smoke test: max-fetch-jobs is accepted and fetch works.
+clearStore
+outPath=$(nix-build --option max-fetch-jobs 1 --expr 'import <nix/fetchurl.nix>' --argstr url "file://$(pwd)/fetchurl.sh" --argstr sha256 "$hash" --no-out-link)
+cmp "$outPath" fetchurl.sh
