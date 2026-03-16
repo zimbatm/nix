@@ -425,7 +425,7 @@ protected:
      */
     virtual void execBuilder(const Strings & args, const Strings & envStrs);
 
-private:
+protected:
 
     /**
      * Check that the derivation outputs all exist and register them
@@ -433,7 +433,11 @@ private:
      */
     SingleDrvOutputs registerOutputs();
 
-protected:
+    /**
+     * Set up scratch output paths, redirected outputs, and input rewrites.
+     * Shared between normal builds and in-process fetch builds.
+     */
+    void setupScratchOutputs();
 
     /**
      * Delete the temporary directory, if we have one.
@@ -728,42 +732,8 @@ static void checkNotWorldWritable(std::filesystem::path path)
     return;
 }
 
-std::optional<Descriptor> DerivationBuilderImpl::startBuild()
+void DerivationBuilderImpl::setupScratchOutputs()
 {
-    if (useBuildUsers(localSettings)) {
-        if (!buildUser)
-            buildUser = getBuildUser();
-
-        if (!buildUser)
-            return std::nullopt;
-    }
-
-    /* Make sure that no other processes are executing under the
-       sandbox uids. This must be done before any chownToBuilder()
-       calls. */
-    prepareUser();
-
-    auto buildDir = store.config->getBuildDir();
-
-    createDirs(buildDir);
-
-    if (buildUser)
-        checkNotWorldWritable(buildDir);
-
-    /* Create a temporary directory where the build will take
-       place. */
-    topTmpDir = createTempDir(buildDir, "nix", 0700);
-    setBuildTmpDir();
-    assert(!tmpDir.empty());
-
-    /* The TOCTOU between the previous mkdir call and this open call is unavoidable due to
-       POSIX semantics.*/
-    tmpDirFd = AutoCloseFD{open(tmpDir.c_str(), O_RDONLY | O_NOFOLLOW | O_DIRECTORY)};
-    if (!tmpDirFd)
-        throw SysError("failed to open the build temporary directory descriptor %1%", PathFmt(tmpDir));
-
-    chownToBuilder(tmpDirFd.get(), tmpDir);
-
     for (auto & [outputName, status] : initialOutputs) {
         /* Set scratch path we'll actually use during the build.
 
@@ -818,6 +788,45 @@ std::optional<Descriptor> DerivationBuilderImpl::startBuild()
 
         redirectedOutputs.insert_or_assign(std::move(fixedFinalPath), std::move(scratchPath));
     }
+}
+
+std::optional<Descriptor> DerivationBuilderImpl::startBuild()
+{
+    if (useBuildUsers(localSettings)) {
+        if (!buildUser)
+            buildUser = getBuildUser();
+
+        if (!buildUser)
+            return std::nullopt;
+    }
+
+    /* Make sure that no other processes are executing under the
+       sandbox uids. This must be done before any chownToBuilder()
+       calls. */
+    prepareUser();
+
+    auto buildDir = store.config->getBuildDir();
+
+    createDirs(buildDir);
+
+    if (buildUser)
+        checkNotWorldWritable(buildDir);
+
+    /* Create a temporary directory where the build will take
+       place. */
+    topTmpDir = createTempDir(buildDir, "nix", 0700);
+    setBuildTmpDir();
+    assert(!tmpDir.empty());
+
+    /* The TOCTOU between the previous mkdir call and this open call is unavoidable due to
+       POSIX semantics.*/
+    tmpDirFd = AutoCloseFD{open(tmpDir.c_str(), O_RDONLY | O_NOFOLLOW | O_DIRECTORY)};
+    if (!tmpDirFd)
+        throw SysError("failed to open the build temporary directory descriptor %1%", PathFmt(tmpDir));
+
+    chownToBuilder(tmpDirFd.get(), tmpDir);
+
+    setupScratchOutputs();
 
     /* Construct the environment passed to the builder. */
     initEnv();
