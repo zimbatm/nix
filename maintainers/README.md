@@ -33,6 +33,63 @@ See https://nixos.org/community/teams/nix/ for the current team membership.
 
 The team is on Github as [@NixOS/nix-team](https://github.com/orgs/NixOS/teams/nix-team).
 
+## Joining the team
+
+### Prerequisites
+
+A candidate must meet **all** of the following before being considered:
+
+- **At least 5 pull requests** authored by the candidate, merged into `master`, that were not trivial (per the [trivial pull request criteria](#trivial-pull-requests)).
+- **At least 5 pull requests** authored by others on which the candidate left substantive review comments that were addressed before merge.
+- **An account on GitHub** that can be added to [@NixOS/nix-team](https://github.com/orgs/NixOS/teams/nix-team).
+
+These thresholds are measured by linking to the relevant pull requests in the nomination issue.
+
+### Nomination process
+
+1. **Open a nomination issue.** The candidate or any team member opens an issue in this repository using the [team nomination template](https://github.com/NixOS/nix/issues/new?template=team_nomination.md). The issue lists the pull requests demonstrating the prerequisites above.
+2. **Collect endorsements.** Two current team members other than the candidate must add a `+1` reaction (👍) to the issue, signalling endorsement.
+3. **Wait 7 days.** The 7-day comment period starts when the second endorsement is recorded. Any current team member can block by posting a comment with a stated reason; the issue is then escalated to the next discussion meeting, where the team resolves the block by either addressing the concern or rejecting the nomination.
+4. **Grant access.** With two endorsements, no unresolved blocks, and the candidate's confirmation that they accept, an existing team member:
+   - adds the candidate to [@NixOS/nix-team](https://github.com/orgs/NixOS/teams/nix-team),
+   - links the candidate from the team page on `nixos.org`,
+   - completes the steps in [`onboarding.md`](./onboarding.md),
+   - closes the nomination issue.
+
+A rejected nomination may be re-opened after 3 months.
+
+### Rights
+
+Team members may:
+
+- Merge pull requests that satisfy the [project board protocol](#project-board-protocol).
+- Merge [trivial pull requests](#trivial-pull-requests) without going through the board.
+- Apply, remove, and create labels on issues and pull requests.
+- Move items on the [team project board](https://github.com/orgs/NixOS/projects/19/views/1).
+- Vote on team nominations (see above).
+
+A team member must not merge a pull request they authored. Their own pull requests require approval and merge by another team member.
+
+### Obligations
+
+Team members are expected to:
+
+- **Respond within 7 days** to review requests on pull requests assigned to them, either by reviewing or by reassigning.
+- Review or merge **at least 10 pull requests per quarter** authored by others.
+- Disclose conflicts of interest when reviewing pull requests from their employer or from projects they have a stake in.
+
+Attending the [team meetings](#meeting-protocol) is **not** a requirement. The team coordinates through GitHub issues, pull request comments, and the project board; meetings exist to accelerate that work, not to gate it. Nominations, votes, and decisions that affect membership must remain available asynchronously through the mechanisms documented above, so that contributors who cannot make the meeting times are not excluded from participation.
+
+### Inactivity and stepping down
+
+A team member is automatically moved to emeritus status when they have not merged, reviewed, or commented on any pull request or issue in this repository for **6 consecutive months**.
+
+Moving a member to emeritus is performed by opening a pull request that removes them from `@NixOS/nix-team` and references the inactivity criterion above. The pull request follows the trivial-PR fast path.
+
+A member may step down at any time by opening such a pull request themselves.
+
+An emeritus member is restored to active status by opening an issue stating intent to return; the team grants access on lazy consensus over 7 days, with no further prerequisites.
+
 ## Meeting protocol
 
 The team meets twice a week (times are denoted in the [Europe/Amsterdam](https://en.m.wikipedia.org/wiki/Time_in_the_Netherlands) time zone):
