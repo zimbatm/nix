@@ -367,42 +367,69 @@ static void checkNotWorldWritable(std::filesystem::path path)
     return;
 }
 
-std::optional<Descriptor> DerivationBuilderImpl::startBuild()
+/* A pure builtin executes no external program and only writes files to
+   its outputs, so it can be realised in-process like a substitution: no
+   sandbox, build user, or child process. Currently only
+   `builtin:writeFiles` qualifies. */
+bool drvBuildsInline(const BasicDerivation & drv)
 {
-    if (useBuildUsers(localSettings)) {
-        if (!buildUser)
-            buildUser = getBuildUser();
+    return drv.isBuiltin() && drv.builder == "builtin:writeFiles";
+}
 
-        if (!buildUser)
-            return std::nullopt;
+std::optional<SingleDrvOutputs> DerivationBuilderImpl::tryBuildInline()
+{
+    if (!drvBuildsInline(drv))
+        return std::nullopt;
+
+    /* Scratch output setup only. We deliberately skip `startBuild()`'s
+       sandbox/build-user/fork machinery: a pure builtin needs none of it.
+       We also create no build directory — a file-writing builtin writes
+       straight to its scratch outputs and never uses one (`cleanupBuild`
+       and `registerOutputs` both tolerate an unset `tmpDir`).
+       `makeDerivationBuilder()` guarantees a non-chroot builder for these,
+       so the base `realPathInHost()` applies. */
+    prepareOutputs();
+
+    buildResult.startTime = time(nullptr);
+
+    BuiltinBuilderContext ctx{
+        .drv = drv,
+        /* No build directory is created for an inline builtin, and a pure
+           file-writing builtin never uses one. */
+        .tmpDirInSandbox = {},
+    };
+    /* Unlike the forked builtin path, which runs inside the chroot where
+       the logical store path is the writable physical path, we run on the
+       host. So hand the builtin the host real path (`realPathInHost`),
+       which `registerOutputs()` also reads from. On a normal store this is
+       the identity; on a chroot store it maps into the store's root. */
+    for (auto & e : drv.outputs)
+        ctx.outputs.insert_or_assign(
+            e.first, realPathInHost(store.printStorePath(scratchOutputs.at(e.first))).string());
+
+    auto builtinName = drv.builder.substr(8);
+    auto builtin = get(RegisterBuiltinBuilder::builtinBuilders(), builtinName);
+    assert(builtin);
+    try {
+        (*builtin)(ctx);
+    } catch (std::exception & e) {
+        cleanupBuild(false);
+        throw BuildError(
+            BuildResult::Failure::PermanentFailure, "builtin builder '%s' failed: %s", builtinName, e.what());
     }
 
-    /* Make sure that no other processes are executing under the
-       sandbox uids. This must be done before any chownToBuilder()
-       calls. */
-    prepareUser();
+    buildResult.timesBuilt++;
+    buildResult.stopTime = time(nullptr);
 
-    auto buildDir = store.config->getBuildDir();
+    auto builtOutputs = registerOutputs();
 
-    createDirs(buildDir);
+    cleanupBuild(true);
 
-    if (buildUser)
-        checkNotWorldWritable(buildDir);
+    return builtOutputs;
+}
 
-    /* Create a temporary directory where the build will take
-       place. */
-    topTmpDir = createTempDir(buildDir, "nix", 0700);
-    setBuildTmpDir();
-    assert(!tmpDir.empty());
-
-    /* The TOCTOU between the previous mkdir call and this open call is unavoidable due to
-       POSIX semantics.*/
-    tmpDirFd = openDirectory(tmpDir, FinalSymlink::DontFollow);
-    if (!tmpDirFd)
-        throw SysError("failed to open the build temporary directory descriptor %1%", PathFmt(tmpDir));
-
-    chownToBuilder(tmpDirFd.get(), tmpDir);
-
+void DerivationBuilderImpl::prepareOutputs()
+{
     for (auto & [outputName, status] : initialOutputs) {
         /* Set scratch path we'll actually use during the build.
 
@@ -457,6 +484,45 @@ std::optional<Descriptor> DerivationBuilderImpl::startBuild()
 
         redirectedOutputs.insert_or_assign(std::move(fixedFinalPath), std::move(scratchPath));
     }
+}
+
+std::optional<Descriptor> DerivationBuilderImpl::startBuild()
+{
+    if (useBuildUsers(localSettings)) {
+        if (!buildUser)
+            buildUser = getBuildUser();
+
+        if (!buildUser)
+            return std::nullopt;
+    }
+
+    /* Make sure that no other processes are executing under the
+       sandbox uids. This must be done before any chownToBuilder()
+       calls. */
+    prepareUser();
+
+    auto buildDir = store.config->getBuildDir();
+
+    createDirs(buildDir);
+
+    if (buildUser)
+        checkNotWorldWritable(buildDir);
+
+    /* Create a temporary directory where the build will take
+       place. */
+    topTmpDir = createTempDir(buildDir, "nix", 0700);
+    setBuildTmpDir();
+    assert(!tmpDir.empty());
+
+    /* The TOCTOU between the previous mkdir call and this open call is unavoidable due to
+       POSIX semantics.*/
+    tmpDirFd = openDirectory(tmpDir, FinalSymlink::DontFollow);
+    if (!tmpDirFd)
+        throw SysError("failed to open the build temporary directory descriptor %1%", PathFmt(tmpDir));
+
+    chownToBuilder(tmpDirFd.get(), tmpDir);
+
+    prepareOutputs();
 
     /* Construct the environment passed to the builder. */
     initEnv();
@@ -1799,6 +1865,13 @@ std::unique_ptr<DerivationBuilder, DerivationBuilderDeleter> makeDerivationBuild
 
     if (!useSandbox && params.drvOptions.useUidRange(params.drv))
         throw Error("feature 'uid-range' is only supported in sandboxed builds");
+
+    /* A pure file-writing builtin executes no program and is realised
+       in-process (see `tryBuildInline()`), so it never needs a sandbox.
+       Force the non-chroot builder, whose base `realPathInHost()` /
+       `tmpDirInSandbox()` are correct for an in-process build. */
+    if (drvBuildsInline(params.drv))
+        useSandbox = false;
 
 #ifdef __APPLE__
     return DerivationBuilderUnique(new DarwinDerivationBuilder(store, miscMethods, std::move(params), useSandbox));

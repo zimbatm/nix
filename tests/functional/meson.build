@@ -79,6 +79,7 @@ suites = [
       'fetchGit.sh',
       'fetchGitShallow.sh',
       'fetchurl.sh',
+      'writefiles.sh',
       'fetchPath.sh',
       'fetchTree-file.sh',
       'simple.sh',

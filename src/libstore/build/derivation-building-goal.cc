@@ -428,7 +428,10 @@ Goal::Co DerivationBuildingGoal::tryToBuild(StorePathSet inputPaths)
                 wrongStore.missingFeatures = WrongLocalStore::Pair<StringSet>{required, available};
         }
 
-        if (maxJobsZero || wrongStore.badPlatform || wrongStore.missingFeatures)
+        /* A pure file-writing builtin is realised in-process and holds no
+           build slot, so `max-jobs = 0` (which disables ordinary local
+           builds) does not apply to it. */
+        if ((maxJobsZero && !drvBuildsInline(*drv)) || wrongStore.badPlatform || wrongStore.missingFeatures)
             return LocalBuildRejection{.maxJobsZero = maxJobsZero, .rejection = std::move(wrongStore)};
 
         return LocalBuildCapability{*localStoreP, ext};
@@ -896,12 +899,17 @@ Goal::Co DerivationBuildingGoal::buildLocally(
     std::unique_ptr<Activity> actLock;
     DerivationBuilderUnique builder;
     Descriptor builderOut;
+    SingleDrvOutputs builtOutputs;
+    bool builtInline = false;
 
     // Will continue here while waiting for a build user below
     while (true) {
 
+        /* A pure file-writing builtin is realised in-process (see
+           `tryBuildInline()` below); it forks no builder and holds no
+           build slot, so it need not wait for one. */
         unsigned int curBuilds = worker.getNrLocalBuilds();
-        if (curBuilds >= worker.settings.maxBuildJobs) {
+        if (!drvBuildsInline(*drv) && curBuilds >= worker.settings.maxBuildJobs) {
             outputLocks.unlock();
             co_await waitForBuildSlot();
             co_return tryToBuild(std::move(inputPaths));
@@ -944,32 +952,39 @@ Goal::Co DerivationBuildingGoal::buildLocally(
                 }
             };
 
-            decltype(DerivationBuilderParams::defaultPathsInChroot) defaultPathsInChroot =
-                localBuildCap.localStore.config->getLocalSettings().sandboxPaths.get();
+            decltype(DerivationBuilderParams::defaultPathsInChroot) defaultPathsInChroot;
             DesugaredEnv desugaredEnv;
 
-            /* Add the closure of store paths to the chroot. */
-            StorePathSet closure;
-            for (auto & i : defaultPathsInChroot)
-                try {
-                    if (worker.store.isInStore(i.second.source.string()))
-                        worker.store.computeFSClosure(
-                            worker.store.toStorePath(i.second.source.string()).first, closure);
-                } catch (InvalidPath & e) {
-                } catch (Error & e) {
-                    e.addTrace({}, "while processing sandbox path %s", PathFmt(i.second.source));
-                    throw;
-                }
-            for (auto & i : closure) {
-                auto p = worker.store.printStorePath(i);
-                defaultPathsInChroot.insert_or_assign(p, ChrootPath{.source = p});
-            }
+            /* A pure file-writing builtin is realised in-process with no
+               sandbox and no builder environment, so skip the per-derivation
+               sandbox-path closure walk and env desugaring entirely — they
+               would otherwise dominate its cost. */
+            if (!drvBuildsInline(*drv)) {
+                defaultPathsInChroot = localBuildCap.localStore.config->getLocalSettings().sandboxPaths.get();
 
-            try {
-                desugaredEnv = DesugaredEnv::create(worker.store, *drv, drvOptions, inputPaths);
-            } catch (BuildError & e) {
-                outputLocks.unlock();
-                co_return doneFailure(std::move(e));
+                /* Add the closure of store paths to the chroot. */
+                StorePathSet closure;
+                for (auto & i : defaultPathsInChroot)
+                    try {
+                        if (worker.store.isInStore(i.second.source.string()))
+                            worker.store.computeFSClosure(
+                                worker.store.toStorePath(i.second.source.string()).first, closure);
+                    } catch (InvalidPath & e) {
+                    } catch (Error & e) {
+                        e.addTrace({}, "while processing sandbox path %s", PathFmt(i.second.source));
+                        throw;
+                    }
+                for (auto & i : closure) {
+                    auto p = worker.store.printStorePath(i);
+                    defaultPathsInChroot.insert_or_assign(p, ChrootPath{.source = p});
+                }
+
+                try {
+                    desugaredEnv = DesugaredEnv::create(worker.store, *drv, drvOptions, inputPaths);
+                } catch (BuildError & e) {
+                    outputLocks.unlock();
+                    co_return doneFailure(std::move(e));
+                }
             }
 
             DerivationBuilderParams params{
@@ -999,6 +1014,21 @@ Goal::Co DerivationBuildingGoal::buildLocally(
                                 std::move(params));
         }
 
+        /* Fast path: a pure file-writing builtin (e.g. builtin:writeFiles)
+           executes no program and is realised in-process, skipping the
+           sandbox, build user, fork, and log-pump machinery entirely. */
+        try {
+            if (auto inlineOutputs = builder->tryBuildInline()) {
+                builtOutputs = std::move(*inlineOutputs);
+                builtInline = true;
+                break;
+            }
+        } catch (BuildError & e) {
+            builder.reset();
+            outputLocks.unlock();
+            co_return doneFailure(std::move(e));
+        }
+
         if (auto builderOutOpt = builder->startBuild()) {
             builderOut = *std::move(builderOutOpt);
         } else {
@@ -1017,48 +1047,52 @@ Goal::Co DerivationBuildingGoal::buildLocally(
 
     actLock.reset();
 
-    worker.childStarted(shared_from_this(), {builderOut}, true, true);
+    if (!builtInline) {
 
-    started();
+        worker.childStarted(shared_from_this(), {builderOut}, true, true);
 
-    uint64_t logSize = 0;
+        started();
 
-    while (true) {
-        auto event = co_await WaitForChildEvent{};
-        if (auto * output = std::get_if<ChildOutput>(&event)) {
-            if (output->fd == builder->builderOut.get()) {
-                logSize += output->data.size();
-                if (worker.settings.maxLogSize && logSize > worker.settings.maxLogSize) {
-                    builder->killChild();
-                    co_return doneFailureLogTooLong(*buildLog);
+        uint64_t logSize = 0;
+
+        while (true) {
+            auto event = co_await WaitForChildEvent{};
+            if (auto * output = std::get_if<ChildOutput>(&event)) {
+                if (output->fd == builder->builderOut.get()) {
+                    logSize += output->data.size();
+                    if (worker.settings.maxLogSize && logSize > worker.settings.maxLogSize) {
+                        builder->killChild();
+                        co_return doneFailureLogTooLong(*buildLog);
+                    }
+                    (*buildLog)(output->data);
+                    if (logFile->sink)
+                        (*logFile->sink)(output->data);
                 }
-                (*buildLog)(output->data);
-                if (logFile->sink)
-                    (*logFile->sink)(output->data);
+            } else if (std::get_if<ChildEOF>(&event)) {
+                buildLog->flush();
+                break;
+            } else if (auto * timeout = std::get_if<std::unique_ptr<TimedOut>>(&event)) {
+                builder->killChild();
+                co_return doneFailure(std::move(**timeout));
             }
-        } else if (std::get_if<ChildEOF>(&event)) {
-            buildLog->flush();
-            break;
-        } else if (auto * timeout = std::get_if<std::unique_ptr<TimedOut>>(&event)) {
-            builder->killChild();
-            co_return doneFailure(std::move(**timeout));
         }
-    }
 
-    trace("build done");
+        trace("build done");
 
-    SingleDrvOutputs builtOutputs;
-    try {
-        builtOutputs = builder->unprepareBuild();
-    } catch (BuilderFailureError & e) {
-        builder.reset();
-        outputLocks.unlock();
-        co_return doneFailure(fixupBuilderFailureErrorMessage(std::move(e), *buildLog));
-    } catch (BuildError & e) {
-        builder.reset();
-        outputLocks.unlock();
-        co_return doneFailure(std::move(e));
-    }
+        try {
+            builtOutputs = builder->unprepareBuild();
+        } catch (BuilderFailureError & e) {
+            builder.reset();
+            outputLocks.unlock();
+            co_return doneFailure(fixupBuilderFailureErrorMessage(std::move(e), *buildLog));
+        } catch (BuildError & e) {
+            builder.reset();
+            outputLocks.unlock();
+            co_return doneFailure(std::move(e));
+        }
+
+    } // if (!builtInline)
+
     {
         builder.reset();
         StorePathSet outputPaths;

@@ -191,6 +191,8 @@ public:
 
     SingleDrvOutputs unprepareBuild() override;
 
+    std::optional<SingleDrvOutputs> tryBuildInline() override;
+
 protected:
 
     /**
@@ -359,6 +361,17 @@ protected:
     virtual void execBuilder(const Strings & args, const Strings & envStrs);
 
 private:
+
+    /**
+     * Compute the scratch output paths used during the build and the
+     * associated hash rewrites, populating `scratchOutputs`,
+     * `inputRewrites`, and `redirectedOutputs`. This is the
+     * execution-agnostic half of build setup: it depends only on
+     * `initialOutputs` and the build mode, not on the build user, tmp
+     * directory, or sandbox. The state it produces is later consumed by
+     * `registerOutputs()`.
+     */
+    void prepareOutputs();
 
     /**
      * Check that the derivation outputs all exist and register them

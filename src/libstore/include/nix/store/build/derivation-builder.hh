@@ -197,6 +197,21 @@ public:
     virtual SingleDrvOutputs unprepareBuild() = 0;
 
     /**
+     * Attempt to realise this derivation in-process, without forking a
+     * builder, setting up a sandbox, or acquiring a build user. This is
+     * possible for pure file-writing builtins (e.g.
+     * `builtin:writeFiles`), which execute no external program and are
+     * pure by construction.
+     *
+     * @returns the built outputs if the derivation was realised inline,
+     * or `std::nullopt` if it is not eligible — in which case the caller
+     * must drive the normal `startBuild()` / `unprepareBuild()` path.
+     *
+     * @throws BuildError on failure.
+     */
+    virtual std::optional<SingleDrvOutputs> tryBuildInline() = 0;
+
+    /**
      * Forcibly kill the child process, if any.
      *
      * @returns whether the child was still alive and needed to be
@@ -235,6 +250,16 @@ using DerivationBuilderUnique = std::unique_ptr<DerivationBuilder, DerivationBui
 #ifndef _WIN32 // TODO enable `DerivationBuilder` on Windows
 DerivationBuilderUnique makeDerivationBuilder(
     LocalStore & store, std::shared_ptr<DerivationBuilderCallbacks> miscMethods, DerivationBuilderParams params);
+
+/**
+ * Whether this derivation is realised in-process by
+ * `DerivationBuilder::tryBuildInline()` — i.e. a pure file-writing
+ * builtin (`builtin:writeFiles`) that executes no program. Such
+ * derivations need no sandbox and consume no build slot, so the
+ * scheduler neither counts them against nor gates them on
+ * `max-jobs`.
+ */
+bool drvBuildsInline(const BasicDerivation & drv);
 
 /**
  * @param handler Must be chosen such that it supports the given
