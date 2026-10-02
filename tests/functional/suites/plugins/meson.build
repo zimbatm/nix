@@ -17,6 +17,18 @@ libplugintest = shared_module(
 plugin_tests += [ 'register-setting-and-primop.sh' ]
 plugin_test_deps += [ libplugintest ]
 
+libplugintest_inputscheme = shared_module(
+  'plugintest_inputscheme',
+  'src/plugintest_inputscheme.cc',
+  dependencies : [
+    dependency('nix-fetchers'),
+  ],
+  build_by_default : false,
+)
+
+plugin_tests += [ 'register-input-scheme.sh' ]
+plugin_test_deps += [ libplugintest_inputscheme ]
+
 if get_option('plugin-c-api') and not host_machine.system().startswith('windows')
   libplugintest_dlsym = shared_module(
     'plugintest_dlsym',
